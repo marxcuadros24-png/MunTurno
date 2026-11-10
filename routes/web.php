@@ -38,6 +38,8 @@ Route::prefix('operador')->name('operador.')->group(function () {
 });
 
 // Módulo 4: Seguimiento Móvil del Ciudadano
+Route::get('/consultar-turno', [CiudadanoController::class, 'formularioConsulta'])->name('ciudadano.consulta');
+Route::post('/consultar-turno', [CiudadanoController::class, 'buscarTurno'])->name('ciudadano.buscar');
 Route::get('/mi-turno/{codigo}', [CiudadanoController::class, 'seguimiento'])->name('ciudadano.seguimiento');
 Route::get('/api/mi-turno/{codigo}/estado', [CiudadanoController::class, 'estadoTurno'])->name('ciudadano.estado');
 

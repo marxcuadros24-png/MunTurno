@@ -1,5 +1,5 @@
 <x-layouts.app :title="'Kiosco de Emisión de Turnos'">
-<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="kioscoApp()">
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="kioscoApp(@js($areas))">
     <!-- Cabecera del Kiosco -->
     <div class="text-center mb-8">
         <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold uppercase tracking-wider mb-2">
@@ -11,35 +11,52 @@
 
     <!-- Progreso Visual de Pasos -->
     <div class="flex items-center justify-center gap-2 sm:gap-4 mb-8 text-xs font-semibold">
-        <button type="button" @click="paso = 1" :class="paso >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'" class="px-4 py-2 rounded-xl flex items-center gap-2 transition">
+        <button type="button" @click="paso = 1" :class="paso >= 1 ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-200 text-slate-500'" class="px-5 py-2.5 rounded-xl flex items-center gap-2 transition cursor-pointer">
             <span class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">1</span>
             <span>Área & Trámite</span>
         </button>
         <span class="text-slate-300">──</span>
-        <button type="button" @click="if(tramiteSeleccionado) paso = 2" :disabled="!tramiteSeleccionado" :class="paso >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'" class="px-4 py-2 rounded-xl flex items-center gap-2 transition disabled:opacity-50">
+        <button type="button" @click="avanzarAPaso2()" :class="paso >= 2 ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-200 text-slate-500'" class="px-5 py-2.5 rounded-xl flex items-center gap-2 transition" :disabled="!tramiteId">
             <span class="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">2</span>
             <span>Datos del Ciudadano</span>
         </button>
     </div>
 
+    <!-- Alertas de validación de backend si las hubiera -->
+    @if ($errors->any())
+        <div class="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-semibold space-y-1">
+            @foreach ($errors->all() as $error)
+                <p>• {{ $error }}</p>
+            @endforeach
+        </div>
+    @endif
+
     <form action="{{ route('kiosco.emitir') }}" method="POST" id="formTurno">
         @csrf
-        <input type="hidden" name="tramite_id" :value="tramiteSeleccionado ? tramiteSeleccionado.id : ''">
+        <input type="hidden" name="tramite_id" :value="tramiteId || ''">
 
         <!-- PASO 1: Selección de Área y Trámite -->
         <div x-show="paso === 1" class="space-y-6">
-            <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-blue-600"></span>
-                1. Selecciona el Área y Trámite Requerido
-            </h2>
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                    <span>1. Selecciona el Área y Trámite Requerido</span>
+                </h2>
+                <template x-if="tramiteSeleccionado">
+                    <span class="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                        <span x-text="'Trámite: ' + tramiteSeleccionado.nombre"></span>
+                    </span>
+                </template>
+            </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 @foreach($areas as $area)
                     <div class="bg-white rounded-2xl border-2 transition-all duration-200 overflow-hidden shadow-xs hover:shadow-md"
-                         :class="areaSeleccionada && areaSeleccionada.id === {{ $area->id }} ? 'border-blue-600 ring-2 ring-blue-600/20' : 'border-slate-200 hover:border-slate-300'">
+                         :class="areaId === {{ $area->id }} ? 'border-blue-600 ring-2 ring-blue-600/20' : 'border-slate-200 hover:border-slate-300'">
                         <!-- Header del Área -->
                         <div class="p-5 flex items-start justify-between cursor-pointer"
-                             @click="seleccionarArea({{ $area->toJson() }})">
+                             @click="seleccionarArea({{ $area->id }})">
                             <div class="flex items-center gap-3">
                                 <div class="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-sm" style="background-color: {{ $area->color }}">
                                     {{ $area->codigo }}
@@ -49,28 +66,31 @@
                                     <p class="text-xs text-slate-500 mt-0.5">{{ $area->tramites->count() }} trámites disponibles</p>
                                 </div>
                             </div>
-                            <span class="text-xs font-semibold px-2 py-1 rounded-md"
-                                  :class="areaSeleccionada && areaSeleccionada.id === {{ $area->id }} ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'">
-                                <span x-text="areaSeleccionada && areaSeleccionada.id === {{ $area->id }} ? 'Seleccionado' : 'Elegir'"></span>
+                            <span class="text-xs font-semibold px-2.5 py-1 rounded-lg transition"
+                                  :class="areaId === {{ $area->id }} ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'">
+                                <span x-text="areaId === {{ $area->id }} ? 'Abierto' : 'Elegir'"></span>
                             </span>
                         </div>
 
-                        <!-- Trámites del Área (se expande al seleccionar el área) -->
-                        <div x-show="areaSeleccionada && areaSeleccionada.id === {{ $area->id }}" class="border-t border-slate-100 bg-slate-50/50 p-4 space-y-2">
+                        <!-- Trámites del Área -->
+                        <div x-show="areaId === {{ $area->id }}" class="border-t border-slate-100 bg-slate-50/70 p-4 space-y-2">
                             <p class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Selecciona tu trámite específico:</p>
                             @foreach($area->tramites as $tr)
-                                <div @click="seleccionarTramite({{ $tr->toJson() }})"
-                                     class="p-3 rounded-xl border bg-white flex items-center justify-between cursor-pointer transition hover:border-blue-400"
-                                     :class="tramiteSeleccionado && tramiteSeleccionado.id === {{ $tr->id }} ? 'border-blue-600 bg-blue-50/50 font-semibold text-blue-900' : 'border-slate-200 text-slate-700'">
-                                    <div class="flex items-center gap-2">
-                                        <div class="w-2 h-2 rounded-full" :class="tramiteSeleccionado && tramiteSeleccionado.id === {{ $tr->id }} ? 'bg-blue-600' : 'bg-slate-300'"></div>
+                                <div @click.stop="seleccionarTramite({{ $tr->id }}, {{ $tr->es_preferencial ? 'true' : 'false' }})"
+                                     class="p-3.5 rounded-xl border bg-white flex items-center justify-between cursor-pointer transition hover:border-blue-500 hover:shadow-xs"
+                                     :class="tramiteId === {{ $tr->id }} ? 'border-blue-600 bg-blue-50/80 ring-1 ring-blue-600 text-blue-900 font-bold' : 'border-slate-200 text-slate-700'">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-4 h-4 rounded-full border flex items-center justify-center transition"
+                                             :class="tramiteId === {{ $tr->id }} ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'">
+                                            <div x-show="tramiteId === {{ $tr->id }}" class="w-1.5 h-1.5 rounded-full bg-white"></div>
+                                        </div>
                                         <span class="text-sm">{{ $tr->nombre }}</span>
                                     </div>
                                     <div class="flex items-center gap-2">
                                         @if($tr->es_preferencial)
-                                            <span class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">Preferencial</span>
+                                            <span class="text-[10px] font-bold bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full">Preferencial</span>
                                         @endif
-                                        <span class="text-xs text-slate-400">~{{ $tr->tiempo_estimado_minutos }} min</span>
+                                        <span class="text-xs text-slate-400 font-medium">~{{ $tr->tiempo_estimado_minutos }} min</span>
                                     </div>
                                 </div>
                             @endforeach
@@ -79,9 +99,14 @@
                 @endforeach
             </div>
 
-            <div class="flex justify-end pt-4">
-                <button type="button" @click="avanzarAPaso2()" :disabled="!tramiteSeleccionado"
-                        class="px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center gap-2">
+            <!-- Botón de avance -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200">
+                <div class="text-xs text-slate-500">
+                    <span x-show="!tramiteId" class="text-amber-600 font-semibold">⚠️ Selecciona un área y un trámite para continuar</span>
+                    <span x-show="tramiteId" class="text-emerald-600 font-semibold">✓ Trámite seleccionado. Puedes continuar.</span>
+                </div>
+                <button type="button" @click="avanzarAPaso2()" :disabled="!tramiteId"
+                        class="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-2">
                     <span>Continuar a Datos del Ciudadano</span>
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                 </button>
@@ -99,7 +124,9 @@
                         <h4 class="text-base font-bold text-slate-900" x-text="tramiteSeleccionado ? tramiteSeleccionado.nombre : ''"></h4>
                     </div>
                 </div>
-                <button type="button" @click="paso = 1" class="text-xs font-semibold text-blue-700 hover:underline">Cambiar</button>
+                <button type="button" @click="paso = 1" class="text-xs font-bold text-blue-700 hover:underline px-3 py-1.5 rounded-lg hover:bg-blue-100 transition">
+                    Cambiar Trámite
+                </button>
             </div>
 
             <!-- Opción de Atención Preferencial (Ley de Atención Inclusiva) -->
@@ -176,39 +203,51 @@
         </div>
     </form>
 </div>
-</x-layouts.app>
 
-@push('scripts')
+<x-slot:scripts>
 <script>
-    function kioscoApp() {
+    function kioscoApp(areas) {
         return {
+            areas: areas || [],
             paso: 1,
-            areaSeleccionada: null,
-            tramiteSeleccionado: null,
+            areaId: (areas && areas.length > 0) ? areas[0].id : null,
+            tramiteId: null,
             esPreferencial: false,
 
-            seleccionarArea(area) {
-                this.areaSeleccionada = area;
-                this.tramiteSeleccionado = null;
+            get areaSeleccionada() {
+                return this.areas.find(a => a.id === this.areaId) || null;
             },
 
-            seleccionarTramite(tramite) {
-                this.tramiteSeleccionado = tramite;
-                if (tramite.es_preferencial) {
+            get tramiteSeleccionado() {
+                if (!this.areaSeleccionada || !this.areaSeleccionada.tramites) return null;
+                return this.areaSeleccionada.tramites.find(t => t.id === this.tramiteId) || null;
+            },
+
+            seleccionarArea(id) {
+                this.areaId = id;
+                // Si el área tiene trámites y no hay ninguno seleccionado, no forzamos para que elija conscientemente
+                if (this.tramiteSeleccionado && this.tramiteSeleccionado.area_id !== id) {
+                    this.tramiteId = null;
+                }
+            },
+
+            seleccionarTramite(id, esPref) {
+                this.tramiteId = id;
+                if (esPref) {
                     this.esPreferencial = true;
                 }
             },
 
             avanzarAPaso2() {
-                if (this.tramiteSeleccionado) {
+                if (this.tramiteId) {
                     this.paso = 2;
                     window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                    alert('Por favor selecciona primero un trámite.');
                 }
             }
         };
     }
 </script>
-<!-- Alpine.js CDN para reactividad instantánea del formulario -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-@endpush
-
+</x-slot:scripts>
+</x-layouts.app>

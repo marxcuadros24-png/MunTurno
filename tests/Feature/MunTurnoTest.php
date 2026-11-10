@@ -247,4 +247,26 @@ class MunTurnoTest extends TestCase
         $response->assertStatus(200);
         $this->assertStringContainsString('text/csv', $response->headers->get('content-type'));
     }
+
+    public function test_ciudadano_puede_consultar_turno_por_documento(): void
+    {
+        $turno = Turno::create([
+            'codigo' => 'TEST-CONSULTA',
+            'numero_secuencia' => 991,
+            'area_id' => $this->area->id,
+            'tramite_id' => $this->tramite->id,
+            'ciudadano_tipo_documento' => 'DNI',
+            'ciudadano_documento' => '44556677',
+            'ciudadano_nombre' => 'Consulta DNI Test',
+            'es_preferencial' => false,
+            'estado' => 'espera',
+            'fecha_emision' => now(),
+        ]);
+
+        $response = $this->post(route('ciudadano.buscar'), [
+            'documento' => '44556677',
+        ]);
+
+        $response->assertRedirect(route('ciudadano.seguimiento', 'TEST-CONSULTA'));
+    }
 }
