@@ -269,4 +269,71 @@ class MunTurnoTest extends TestCase
 
         $response->assertRedirect(route('ciudadano.seguimiento', 'TEST-CONSULTA'));
     }
+
+    public function test_operador_recibe_turnos_de_kiosko_en_cola_y_puede_atender_todas_las_areas(): void
+    {
+        // 1. Emitir turno desde el kiosco
+        $this->post(route('kiosco.emitir'), [
+            'tramite_id' => $this->tramite->id,
+            'ciudadano_tipo_documento' => 'DNI',
+            'ciudadano_documento' => '33445566',
+            'ciudadano_nombre' => 'Kiosco a Operador Test',
+            'es_preferencial' => 0,
+        ]);
+
+        // 2. Operador consulta la cola de su ventanilla
+        $response = $this->get(route('operador.cola', $this->ventanilla->id));
+        $response->assertStatus(200);
+        $data = $response->json();
+
+        $this->assertGreaterThan(0, $data['total_espera']);
+        $this->assertTrue(collect($data['cola_espera'])->contains('ciudadano_documento', '33445566'));
+
+        // 3. Crear turno en otra área y verificar que con todas_las_areas se recibe
+        $otraArea = Area::create([
+            'nombre' => 'Otra Área Test',
+            'codigo' => 'OAT',
+            'color' => '#123456',
+            'activo' => true,
+        ]);
+        $otroTramite = Tramite::create([
+            'area_id' => $otraArea->id,
+            'nombre' => 'Trámite Otra Área',
+            'tiempo_estimado_minutos' => 10,
+            'es_preferencial' => false,
+            'activo' => true,
+        ]);
+
+        $turnoOtraArea = Turno::create([
+            'codigo' => 'OAT-001',
+            'numero_secuencia' => 1,
+            'area_id' => $otraArea->id,
+            'tramite_id' => $otroTramite->id,
+            'ciudadano_tipo_documento' => 'DNI',
+            'ciudadano_documento' => '88990011',
+            'ciudadano_nombre' => 'Ciudadano Otra Área',
+            'es_preferencial' => false,
+            'estado' => 'espera',
+            'fecha_emision' => now(),
+        ]);
+
+        // Consulta filtrada (no debería incluir OAT-001 porque la ventanilla es de $this->area)
+        $respMiArea = $this->get(route('operador.cola', ['ventanilla' => $this->ventanilla->id, 'todas_las_areas' => 0]));
+        $this->assertFalse(collect($respMiArea->json()['cola_espera'])->contains('codigo', 'OAT-001'));
+
+        // Consulta universal (debería incluir OAT-001)
+        $respTodas = $this->get(route('operador.cola', ['ventanilla' => $this->ventanilla->id, 'todas_las_areas' => 1]));
+        $this->assertTrue(collect($respTodas->json()['cola_espera'])->contains('codigo', 'OAT-001'));
+
+        // 4. Operador puede llamar turno específico
+        $respLlamarDirecto = $this->post(route('operador.llamar.especifico', [
+            'ventanilla' => $this->ventanilla->id,
+            'turno' => $turnoOtraArea->id,
+        ]));
+        $respLlamarDirecto->assertStatus(200);
+
+        $turnoOtraArea->refresh();
+        $this->assertEquals('llamado', $turnoOtraArea->estado);
+        $this->assertEquals($this->ventanilla->id, $turnoOtraArea->ventanilla_id);
+    }
 }

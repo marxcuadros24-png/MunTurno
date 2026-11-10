@@ -69,16 +69,16 @@ class TurnoService
      * Llama al siguiente turno en cola para la ventanilla.
      * Prioriza turnos preferenciales según ley de atención inclusiva.
      */
-    public function llamarSiguiente(Ventanilla $ventanilla, ?int $operadorId = null): ?Turno
+    public function llamarSiguiente(Ventanilla $ventanilla, ?int $operadorId = null, bool $todasLasAreas = false): ?Turno
     {
-        return DB::transaction(function () use ($ventanilla, $operadorId) {
+        return DB::transaction(function () use ($ventanilla, $operadorId, $todasLasAreas) {
             $hoy = Carbon::today();
 
             // Buscar en la cola de turnos en espera para el área de la ventanilla (o cualquier área si es universal)
             $query = Turno::whereDate('fecha_emision', $hoy)
                 ->where('estado', 'espera');
 
-            if ($ventanilla->area_id) {
+            if (!$todasLasAreas && $ventanilla->area_id) {
                 $query->where('area_id', $ventanilla->area_id);
             }
 
@@ -117,6 +117,40 @@ class TurnoService
             $turno->load(['area', 'tramite', 'ventanilla', 'operador']);
 
             // Disparar WebSocket a pantalla de TV y cliente
+            broadcast(new TurnoLlamado($turno));
+
+            return $turno;
+        });
+    }
+
+    /**
+     * Llama a un turno específico seleccionado manualmente por el operador.
+     */
+    public function llamarTurnoEspecifico(Turno $turno, Ventanilla $ventanilla, ?int $operadorId = null): Turno
+    {
+        return DB::transaction(function () use ($turno, $ventanilla, $operadorId) {
+            $ahora = now();
+            $tiempoEspera = $turno->fecha_emision ? max(0, (int) abs($ahora->diffInSeconds($turno->fecha_emision))) : 0;
+
+            $turno->update([
+                'ventanilla_id' => $ventanilla->id,
+                'user_id' => $operadorId ?? $ventanilla->user_id,
+                'estado' => 'llamado',
+                'llamadas_contador' => ($turno->llamadas_contador ?? 0) + 1,
+                'fecha_primer_llamado' => $turno->fecha_primer_llamado ?? $ahora,
+                'tiempo_espera_segundos' => $tiempoEspera,
+            ]);
+
+            $ventanilla->update(['estado' => 'atendiendo']);
+
+            LlamadoHistorial::create([
+                'turno_id' => $turno->id,
+                'ventanilla_id' => $ventanilla->id,
+                'user_id' => $operadorId ?? $ventanilla->user_id,
+                'llamado_at' => $ahora,
+            ]);
+
+            $turno->load(['area', 'tramite', 'ventanilla', 'operador']);
             broadcast(new TurnoLlamado($turno));
 
             return $turno;

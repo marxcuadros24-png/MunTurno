@@ -35,6 +35,7 @@ Route::prefix('operador')->name('operador.')->group(function () {
     Route::post('/finalizar/{turno}', [OperadorController::class, 'finalizarAtencion'])->name('finalizar');
     Route::post('/ausente/{turno}', [OperadorController::class, 'marcarAusente'])->name('ausente');
     Route::post('/transferir/{turno}', [OperadorController::class, 'transferir'])->name('transferir');
+    Route::post('/llamar-directo/{ventanilla}/{turno}', [OperadorController::class, 'llamarEspecifico'])->name('llamar.especifico');
 });
 
 // Módulo 4: Seguimiento Móvil del Ciudadano

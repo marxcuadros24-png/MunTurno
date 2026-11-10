@@ -29,12 +29,21 @@ class OperadorController extends Controller
 
         $areas = Area::where('activo', true)->get();
 
+        $hoy = Carbon::today();
+        foreach ($ventanillas as $v) {
+            $v->turnos_espera_count = Turno::whereDate('fecha_emision', $hoy)
+                ->where('estado', 'espera')
+                ->when($v->area_id, fn($q) => $q->where('area_id', $v->area_id))
+                ->count();
+        }
+
         return view('operador.index', compact('ventanillas', 'ventanillaSeleccionada', 'areas'));
     }
 
-    public function colaActual(Ventanilla $ventanilla): JsonResponse
+    public function colaActual(Request $request, Ventanilla $ventanilla): JsonResponse
     {
         $hoy = Carbon::today();
+        $todasLasAreas = $request->boolean('todas_las_areas', false);
 
         // Turno en curso en esta ventanilla
         $turnoActual = Turno::with(['area', 'tramite'])
@@ -44,18 +53,27 @@ class OperadorController extends Controller
             ->latest('updated_at')
             ->first();
 
-        // Cola de espera asignable a esta ventanilla
+        // Cola de espera asignable
         $query = Turno::with(['area', 'tramite'])
             ->whereDate('fecha_emision', $hoy)
             ->where('estado', 'espera');
 
-        if ($ventanilla->area_id) {
+        if (!$todasLasAreas && $ventanilla->area_id) {
             $query->where('area_id', $ventanilla->area_id);
         }
 
         $colaEspera = $query->orderByDesc('es_preferencial')
             ->orderBy('id', 'asc')
             ->get();
+
+        // Conteos informativos globales y por área
+        $totalGlobalEspera = Turno::whereDate('fecha_emision', $hoy)
+            ->where('estado', 'espera')
+            ->count();
+
+        $totalMiAreaEspera = $ventanilla->area_id
+            ? Turno::whereDate('fecha_emision', $hoy)->where('estado', 'espera')->where('area_id', $ventanilla->area_id)->count()
+            : $totalGlobalEspera;
 
         // Últimos atendidos hoy por esta ventanilla
         $atendidosHoy = Turno::with(['tramite'])
@@ -71,14 +89,17 @@ class OperadorController extends Controller
             'turno_actual' => $turnoActual,
             'cola_espera' => $colaEspera,
             'total_espera' => $colaEspera->count(),
+            'total_mi_area' => $totalMiAreaEspera,
+            'total_global' => $totalGlobalEspera,
             'atendidos_hoy' => $atendidosHoy,
             'total_atendidos' => Turno::whereDate('fecha_emision', $hoy)->where('ventanilla_id', $ventanilla->id)->where('estado', 'finalizado')->count(),
         ]);
     }
 
-    public function llamarSiguiente(Ventanilla $ventanilla): JsonResponse
+    public function llamarSiguiente(Request $request, Ventanilla $ventanilla): JsonResponse
     {
-        $turno = $this->turnoService->llamarSiguiente($ventanilla, auth()->id());
+        $todasLasAreas = $request->boolean('todas_las_areas', false);
+        $turno = $this->turnoService->llamarSiguiente($ventanilla, auth()->id(), $todasLasAreas);
 
         if (!$turno) {
             return response()->json([
@@ -91,6 +112,17 @@ class OperadorController extends Controller
             'success' => true,
             'message' => "Turno {$turno->codigo} llamado con éxito.",
             'turno' => $turno,
+        ]);
+    }
+
+    public function llamarEspecifico(Ventanilla $ventanilla, Turno $turno): JsonResponse
+    {
+        $turnoActualizado = $this->turnoService->llamarTurnoEspecifico($turno, $ventanilla, auth()->id());
+
+        return response()->json([
+            'success' => true,
+            'message' => "Turno {$turnoActualizado->codigo} llamado a la {$ventanilla->numero}.",
+            'turno' => $turnoActualizado,
         ]);
     }
 

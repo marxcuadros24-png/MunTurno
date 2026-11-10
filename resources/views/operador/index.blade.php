@@ -1,7 +1,7 @@
 <x-layouts.app :title="'Módulo de Operador - Ventanilla de Atención'">
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="operadorApp()" x-init="initApp()">
-    <!-- Barra Superior del Operador: Selección de Ventanilla y Estado -->
-    <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 mb-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <!-- Barra Superior del Operador: Selección de Ventanilla y Modo de Cola -->
+    <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 mb-6 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div class="flex items-center gap-4">
             <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-lg shadow-sm">
                 <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
@@ -13,23 +13,53 @@
                           :class="turnoActual ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
                           x-text="turnoActual ? (turnoActual.estado === 'atendiendo' ? 'En Atención' : 'Llamado') : 'Disponible'">
                     </span>
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200"
+                          x-text="ventanilla && ventanilla.area ? ventanilla.area.nombre : 'Área General'">
+                    </span>
                 </div>
-                <p class="text-xs text-slate-500" x-text="ventanilla && ventanilla.area ? ventanilla.area.nombre : 'Área General'"></p>
+                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                    <span class="w-2 h-2 rounded-full inline-block" :class="conectado ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'"></span>
+                    <span x-text="conectado ? 'WebSockets activo (tiempo real 0ms)' : 'Modo sondeo continuo activo (3s)'"></span>
+                </div>
             </div>
         </div>
 
-        <!-- Selector de Ventanilla -->
-        <div class="flex items-center gap-3">
-            <label class="text-xs font-bold text-slate-500 uppercase">Cambiar Módulo:</label>
-            <select class="px-3 py-2 rounded-xl border border-slate-300 text-sm font-semibold bg-white focus:ring-2 focus:ring-emerald-500"
-                    @change="cambiarVentanilla($event.target.value)">
-                @foreach($ventanillas as $v)
-                    <option value="{{ $v->id }}" {{ $ventanillaSeleccionada && $ventanillaSeleccionada->id === $v->id ? 'selected' : '' }}>
-                        {{ $v->numero }} ({{ $v->area->nombre ?? 'General' }})
-                    </option>
-                @endforeach
-            </select>
-            <button @click="cargarCola()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition" title="Refrescar">
+        <!-- Selector de Ventanilla y Filtro de Área -->
+        <div class="flex flex-wrap items-center gap-3">
+            <!-- Selector de Módulo -->
+            <div class="flex items-center gap-2">
+                <label class="text-xs font-bold text-slate-500 uppercase">Módulo:</label>
+                <select class="px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold bg-white focus:ring-2 focus:ring-emerald-500"
+                        @change="cambiarVentanilla($event.target.value)">
+                    @foreach($ventanillas as $v)
+                        <option value="{{ $v->id }}" {{ $ventanillaSeleccionada && $ventanillaSeleccionada->id === $v->id ? 'selected' : '' }}>
+                            {{ $v->numero }} — {{ $v->area->nombre ?? 'General' }} ({{ $v->turnos_espera_count }} en espera)
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            <!-- Botones Filtro de Alcance de Cola -->
+            <div class="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
+                <button type="button" @click="cambiarModoCola(false)"
+                        :class="!todasLasAreas ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+                        class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5">
+                    <span>🎯 Mi Área</span>
+                    <span class="px-1.5 py-0.2 rounded-full text-[10px]"
+                          :class="!todasLasAreas ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-700'"
+                          x-text="totalMiArea">0</span>
+                </button>
+                <button type="button" @click="cambiarModoCola(true)"
+                        :class="todasLasAreas ? 'bg-white text-emerald-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'"
+                        class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5">
+                    <span>🌐 Todas las Áreas</span>
+                    <span class="px-1.5 py-0.2 rounded-full text-[10px]"
+                          :class="todasLasAreas ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'"
+                          x-text="totalGlobal">0</span>
+                </button>
+            </div>
+
+            <button @click="cargarCola()" class="p-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition" title="Refrescar datos">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             </button>
         </div>
@@ -60,12 +90,27 @@
                         <div>
                             <h3 class="text-2xl font-bold font-display text-slate-900">Ventanilla Disponible</h3>
                             <p class="text-sm text-slate-500 max-w-md mx-auto mt-1">
-                                Hay <span class="font-bold text-blue-600" x-text="colaEspera.length">0</span> ciudadanos en espera para tu módulo. Presiona el botón para convocar al siguiente.
+                                Hay <span class="font-bold text-blue-600" x-text="colaEspera.length">0</span> ciudadanos en espera en la vista actual. Presiona el botón para convocar al siguiente.
                             </p>
                         </div>
+
+                        <!-- Aviso de turnos en otras áreas si la cola de mi área está vacía -->
+                        <template x-if="!todasLasAreas && totalMiArea === 0 && totalGlobal > 0">
+                            <div class="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-left flex items-center justify-between gap-3 max-w-lg mx-auto">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-base">💡</span>
+                                    <span>Hay <strong><span x-text="totalGlobal"></span> turnos</strong> en espera en otras áreas municipales emitidos por el kiosco.</span>
+                                </div>
+                                <button type="button" @click="cambiarModoCola(true)"
+                                        class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold whitespace-nowrap">
+                                    Atender Todas
+                                </button>
+                            </div>
+                        </template>
+
                         <button type="button" @click="llamarSiguiente()"
                                 :disabled="colaEspera.length === 0 || cargando"
-                                class="w-full sm:w-auto px-10 py-5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-lg shadow-lg hover:shadow-xl transition flex items-center justify-center gap-3 mx-auto disabled:opacity-40 disabled:cursor-not-allowed">
+                                class="w-full sm:w-auto px-10 py-5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-lg shadow-lg hover:shadow-xl transition flex items-center justify-center gap-3 mx-auto disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
                             <svg class="w-6 h-6 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
                             <span>📢 LLAMAR SIGUIENTE TURNO</span>
                         </button>
@@ -101,6 +146,10 @@
                                 <h3 class="text-lg font-bold text-slate-900" x-text="turnoActual.ciudadano_nombre">---</h3>
                                 <p class="text-xs font-mono text-slate-500" x-text="`${turnoActual.ciudadano_tipo_documento}: ${turnoActual.ciudadano_documento}`"></p>
                                 <p class="text-xs text-slate-600 font-semibold mt-1" x-text="turnoActual.tramite ? turnoActual.tramite.nombre : ''"></p>
+                                <span class="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md mt-1"
+                                      :style="`background-color: ${turnoActual.area ? turnoActual.area.color + '20' : '#e2e8f0'}; color: ${turnoActual.area ? turnoActual.area.color : '#475569'}`"
+                                      x-text="turnoActual.area ? turnoActual.area.nombre : ''">
+                                </span>
                             </div>
                         </div>
 
@@ -108,21 +157,21 @@
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <!-- Re-Llamar -->
                             <button type="button" @click="rellamarTurno()" :disabled="cargando"
-                                    class="p-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition">
+                                    class="p-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition cursor-pointer">
                                 <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
                                 <span>Re-Llamar (<span x-text="turnoActual.llamadas_contador || 1"></span>)</span>
                             </button>
 
                             <!-- Iniciar Atención -->
                             <button type="button" @click="iniciarAtencion()" :disabled="turnoActual.estado === 'atendiendo' || cargando"
-                                    class="p-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition disabled:opacity-50">
+                                    class="p-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition disabled:opacity-50 cursor-pointer">
                                 <svg class="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                 <span x-text="turnoActual.estado === 'atendiendo' ? 'Atendiendo' : 'Tomar Asiento'"></span>
                             </button>
 
                             <!-- Finalizar Atención -->
                             <button type="button" @click="finalizarAtencion()" :disabled="cargando"
-                                    class="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5 shadow-sm transition">
+                                    class="p-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex flex-col items-center justify-center gap-1.5 shadow-sm transition cursor-pointer">
                                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
                                 <span>Finalizar</span>
                             </button>
@@ -131,7 +180,7 @@
                             <button type="button" @click="marcarAusente()"
                                     x-show="turnoActual.estado !== 'atendiendo'"
                                     :disabled="turnoActual.estado === 'atendiendo' || cargando"
-                                    class="p-3 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition disabled:opacity-30 disabled:cursor-not-allowed">
+                                    class="p-3 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">
                                 <svg class="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                                 <span>No Asistió</span>
                             </button>
@@ -140,7 +189,7 @@
                             <button type="button" @click="abrirModalDerivar()"
                                     x-show="turnoActual.estado === 'atendiendo'"
                                     :disabled="cargando"
-                                    class="p-3 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition">
+                                    class="p-3 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition cursor-pointer">
                                 <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
                                 <span>Derivar</span>
                             </button>
@@ -182,8 +231,12 @@
             <div class="bg-white rounded-3xl border border-slate-200 p-6 shadow-xs flex flex-col h-full">
                 <div class="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
                     <div>
-                        <h3 class="text-base font-bold font-display text-slate-900">Cola de Espera</h3>
-                        <p class="text-xs text-slate-500">Ordenada por prioridad preferencial y llegada</p>
+                        <h3 class="text-base font-bold font-display text-slate-900 flex items-center gap-2">
+                            <span>Cola de Espera</span>
+                            <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600"
+                                  x-text="todasLasAreas ? 'Todas las Áreas' : (ventanilla && ventanilla.area ? ventanilla.area.nombre : 'Mi Área')"></span>
+                        </h3>
+                        <p class="text-xs text-slate-500">Prioridad preferencial y orden de llegada</p>
                     </div>
                     <span class="text-sm font-black font-display px-3 py-1 rounded-full bg-blue-100 text-blue-700" x-text="colaEspera.length + ' en fila'"></span>
                 </div>
@@ -200,13 +253,23 @@
                                         <template x-if="item.es_preferencial">
                                             <span class="text-[9px] font-black uppercase bg-amber-400 text-amber-950 px-1.5 py-0.5 rounded-sm">Pref</span>
                                         </template>
+                                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-sm"
+                                              :style="`background-color: ${item.area ? item.area.color + '20' : '#e2e8f0'}; color: ${item.area ? item.area.color : '#475569'}`"
+                                              x-text="item.area ? item.area.codigo : ''">
+                                        </span>
                                     </div>
-                                    <p class="text-xs text-slate-600 font-medium truncate max-w-[160px]" x-text="item.ciudadano_nombre"></p>
+                                    <p class="text-xs text-slate-600 font-medium truncate max-w-[150px]" x-text="item.ciudadano_nombre"></p>
                                 </div>
                             </div>
-                            <div class="text-right">
-                                <span class="text-[11px] text-slate-400 block" x-text="item.tramite ? item.tramite.nombre : ''"></span>
-                                <span class="text-[10px] text-slate-400 font-mono" x-text="new Date(item.fecha_emision).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'})"></span>
+                            <div class="flex items-center gap-2">
+                                <div class="text-right">
+                                    <span class="text-[11px] text-slate-500 block truncate max-w-[120px]" x-text="item.tramite ? item.tramite.nombre : ''"></span>
+                                    <span class="text-[10px] text-slate-400 font-mono" x-text="new Date(item.fecha_emision).toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'})"></span>
+                                </div>
+                                <button type="button" @click="llamarTurnoDirecto(item.id)" :disabled="cargando"
+                                        class="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-xs transition cursor-pointer">
+                                    Llamar
+                                </button>
                             </div>
                         </div>
                     </template>
@@ -214,7 +277,7 @@
                         <div class="text-center py-12 text-slate-400">
                             <svg class="w-10 h-10 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
                             <p class="text-sm font-semibold">No hay ciudadanos en espera</p>
-                            <p class="text-xs text-slate-400">Los nuevos tickets aparecerán en tiempo real aquí.</p>
+                            <p class="text-xs text-slate-400 mt-1">Los nuevos tickets emitidos en el kiosco aparecerán aquí automáticamente.</p>
                         </div>
                     </template>
                 </div>
@@ -243,17 +306,16 @@
                 <textarea x-model="motivoDerivacion" rows="2" placeholder="Ej. Derivado para firma o pago en caja" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></textarea>
             </div>
             <div class="flex justify-end gap-2 pt-2">
-                <button type="button" @click="modalDerivarAbierto = false" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs">Cancelar</button>
-                <button type="button" @click="confirmarDerivacion()" :disabled="cargando" class="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm">
+                <button type="button" @click="modalDerivarAbierto = false" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs cursor-pointer">Cancelar</button>
+                <button type="button" @click="confirmarDerivacion()" :disabled="cargando" class="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer">
                     <span>Confirmar Derivación</span>
                 </button>
             </div>
         </div>
     </div>
 </div>
-</x-layouts.app>
 
-@push('scripts')
+<x-slot:scripts>
 <script>
     function operadorApp() {
         return {
@@ -263,10 +325,15 @@
             colaEspera: [],
             atendidosHoy: [],
             totalAtendidos: 0,
+            totalMiArea: 0,
+            totalGlobal: 0,
+            todasLasAreas: false,
+            conectado: false,
             cargando: false,
             mensaje: '',
             cronometroSegundos: 0,
             cronometroIntervalo: null,
+            pollingIntervalo: null,
             modalDerivarAbierto: false,
             areaDestinoId: {{ $areas->first()?->id ?? 'null' }},
             motivoDerivacion: '',
@@ -275,7 +342,18 @@
                 if (this.ventanillaId) {
                     this.cargarCola();
                     this.iniciarWebSockets();
+
+                    // Sondeo continuo cada 3 segundos: garantiza recibir turnos de inmediato incluso sin Reverb en ejecución
+                    if (this.pollingIntervalo) clearInterval(this.pollingIntervalo);
+                    this.pollingIntervalo = setInterval(() => {
+                        this.cargarCola(true);
+                    }, 3000);
                 }
+            },
+
+            cambiarModoCola(todas) {
+                this.todasLasAreas = todas;
+                this.cargarCola();
             },
 
             get cronometroFormateado() {
@@ -304,10 +382,10 @@
                 window.location.href = `{{ route('operador.index') }}?ventanilla_id=${id}`;
             },
 
-            async cargarCola() {
+            async cargarCola(silencioso = false) {
                 if (!this.ventanillaId) return;
                 try {
-                    const res = await fetch(`{{ url('/operador/cola') }}/${this.ventanillaId}`);
+                    const res = await fetch(`{{ url('/operador/cola') }}/${this.ventanillaId}?todas_las_areas=${this.todasLasAreas ? 1 : 0}`);
                     if (res.ok) {
                         const data = await res.json();
                         this.ventanilla = data.ventanilla;
@@ -315,24 +393,32 @@
                         this.colaEspera = data.cola_espera || [];
                         this.atendidosHoy = data.atendidos_hoy || [];
                         this.totalAtendidos = data.total_atendidos || 0;
+                        this.totalMiArea = data.total_mi_area || 0;
+                        this.totalGlobal = data.total_global || 0;
 
                         if (this.turnoActual) {
                             const inicio = this.turnoActual.fecha_inicio_atencion || this.turnoActual.fecha_primer_llamado;
                             const diff = inicio ? Math.floor((new Date() - new Date(inicio)) / 1000) : 0;
-                            this.iniciarCronometro(Math.max(0, diff));
+                            if (!this.cronometroIntervalo) {
+                                this.iniciarCronometro(Math.max(0, diff));
+                            }
                         } else {
                             this.detenerCronometro();
                         }
                     }
                 } catch(e) {
-                    console.error('Error cargando cola del operador:', e);
+                    if (!silencioso) console.error('Error cargando cola del operador:', e);
                 }
             },
 
             iniciarWebSockets() {
                 if (window.Echo) {
+                    this.conectado = true;
                     window.Echo.channel('cola.publica')
-                        .listen('.turno.creado', () => this.cargarCola())
+                        .listen('.turno.creado', (e) => {
+                            console.log('Turno creado detectado:', e);
+                            this.cargarCola();
+                        })
                         .listen('.turno.actualizado', () => this.cargarCola())
                         .listen('.turno.llamado', () => this.cargarCola());
                 } else {
@@ -348,7 +434,10 @@
                         headers: {
                             'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                        }
+                        },
+                        body: JSON.stringify({
+                            todas_las_areas: this.todasLasAreas
+                        })
                     });
                     const data = await res.json();
                     if (res.ok && data.success) {
@@ -359,6 +448,30 @@
                     }
                 } catch(e) {
                     console.error('Error llamando siguiente:', e);
+                } finally {
+                    this.cargando = false;
+                }
+            },
+
+            async llamarTurnoDirecto(turnoId) {
+                this.cargando = true;
+                try {
+                    const res = await fetch(`{{ url('/operador/llamar-directo') }}/${this.ventanillaId}/${turnoId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        }
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        this.mensaje = data.message;
+                        this.cargarCola();
+                    } else {
+                        alert(data.message || 'No se pudo llamar el turno.');
+                    }
+                } catch(e) {
+                    console.error('Error llamando turno directo:', e);
                 } finally {
                     this.cargando = false;
                 }
@@ -502,6 +615,5 @@
         };
     }
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-@endpush
-
+</x-slot:scripts>
+</x-layouts.app>
