@@ -93,5 +93,77 @@ class AdminController extends Controller
             'timestamp' => now()->format('H:i:s'),
         ]);
     }
+
+    public function exportarCsv()
+    {
+        $hoy = Carbon::today();
+        $turnos = Turno::with(['area', 'tramite', 'ventanilla', 'operador'])
+            ->whereDate('fecha_emision', $hoy)
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $filename = 'munturno_reporte_' . now()->format('Y-m-d_His') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"$filename\"",
+            'Pragma' => 'no-cache',
+            'Cache-Control' => 'must-revalidate, post-check=0, pre-check=0',
+            'Expires' => '0',
+        ];
+
+        $callback = function () use ($turnos) {
+            $file = fopen('php://output', 'w');
+            fputs($file, "\xEF\xBB\xBF"); // UTF-8 BOM for Excel
+
+            fputcsv($file, [
+                'ID',
+                'Código',
+                'Prioridad',
+                'Ciudadano',
+                'Tipo Doc',
+                'Documento',
+                'Área',
+                'Trámite',
+                'Ventanilla',
+                'Operador',
+                'Estado',
+                'Llamados',
+                'Hora Emisión',
+                'Hora 1er Llamado',
+                'Hora Fin Atención',
+                'T. Espera (min)',
+                'T. Atención (min)',
+                'Observaciones',
+            ]);
+
+            foreach ($turnos as $t) {
+                fputcsv($file, [
+                    $t->id,
+                    $t->codigo,
+                    $t->es_preferencial ? 'Preferencial' : 'Regular',
+                    $t->ciudadano_nombre,
+                    $t->ciudadano_tipo_documento,
+                    $t->ciudadano_documento,
+                    $t->area?->nombre ?? '',
+                    $t->tramite?->nombre ?? '',
+                    $t->ventanilla?->numero ?? 'Sin asignar',
+                    $t->operador?->name ?? 'Sin asignar',
+                    strtoupper($t->estado),
+                    $t->llamadas_contador,
+                    $t->fecha_emision ? $t->fecha_emision->format('H:i:s') : '',
+                    $t->fecha_primer_llamado ? $t->fecha_primer_llamado->format('H:i:s') : '',
+                    $t->fecha_fin_atencion ? $t->fecha_fin_atencion->format('H:i:s') : '',
+                    $t->tiempo_espera_segundos ? round($t->tiempo_espera_segundos / 60, 1) : '',
+                    $t->tiempo_atencion_segundos ? round($t->tiempo_atencion_segundos / 60, 1) : '',
+                    $t->observaciones ?? '',
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
 }
 

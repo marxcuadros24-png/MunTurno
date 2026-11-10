@@ -1,8 +1,4 @@
-@extends('layouts.app')
-
-@section('title', 'Módulo de Operador - Ventanilla de Atención')
-
-@section('content')
+<x-layouts.app :title="'Módulo de Operador - Ventanilla de Atención'">
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="operadorApp()" x-init="initApp()">
     <!-- Barra Superior del Operador: Selección de Ventanilla y Estado -->
     <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 mb-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -131,11 +127,22 @@
                                 <span>Finalizar</span>
                             </button>
 
-                            <!-- Marcar Ausente -->
-                            <button type="button" @click="marcarAusente()" :disabled="cargando"
-                                    class="p-3 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition">
+                            <!-- Marcar Ausente / No Asistió: Se bloquea y se oculta automáticamente cuando se inicia la atención -->
+                            <button type="button" @click="marcarAusente()"
+                                    x-show="turnoActual.estado !== 'atendiendo'"
+                                    :disabled="turnoActual.estado === 'atendiendo' || cargando"
+                                    class="p-3 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition disabled:opacity-30 disabled:cursor-not-allowed">
                                 <svg class="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                                 <span>No Asistió</span>
+                            </button>
+
+                            <!-- Derivar Trámite: Disponible cuando ya está en atención presencial -->
+                            <button type="button" @click="abrirModalDerivar()"
+                                    x-show="turnoActual.estado === 'atendiendo'"
+                                    :disabled="cargando"
+                                    class="p-3 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition">
+                                <svg class="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                <span>Derivar</span>
                             </button>
                         </div>
                     </div>
@@ -214,8 +221,37 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal de Derivación a otra Área -->
+    <div x-show="modalDerivarAbierto" style="display: none;" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div @click.away="modalDerivarAbierto = false" class="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 class="text-base font-bold text-slate-900">Derivar Turno <span x-text="turnoActual ? turnoActual.codigo : ''" class="text-purple-600 font-mono"></span></h3>
+                <button @click="modalDerivarAbierto = false" class="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+            </div>
+            <p class="text-xs text-slate-500">El turno será reubicado con <strong>prioridad preferencial</strong> en la cola del área seleccionada.</p>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Área Destino</label>
+                <select x-model="areaDestinoId" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm">
+                    @foreach($areas as $ar)
+                        <option value="{{ $ar->id }}">{{ $ar->nombre }} ({{ $ar->codigo }})</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Motivo / Indicaciones (Opcional)</label>
+                <textarea x-model="motivoDerivacion" rows="2" placeholder="Ej. Derivado para firma o pago en caja" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"></textarea>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" @click="modalDerivarAbierto = false" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs">Cancelar</button>
+                <button type="button" @click="confirmarDerivacion()" :disabled="cargando" class="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm">
+                    <span>Confirmar Derivación</span>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
-@endsection
+</x-layouts.app>
 
 @push('scripts')
 <script>
@@ -231,6 +267,9 @@
             mensaje: '',
             cronometroSegundos: 0,
             cronometroIntervalo: null,
+            modalDerivarAbierto: false,
+            areaDestinoId: {{ $areas->first()?->id ?? 'null' }},
+            motivoDerivacion: '',
 
             initApp() {
                 if (this.ventanillaId) {
@@ -418,6 +457,44 @@
                     }
                 } catch(e) {
                     console.error('Error marcando ausente:', e);
+                } finally {
+                    this.cargando = false;
+                }
+            },
+
+            abrirModalDerivar() {
+                if (!this.turnoActual) return;
+                this.modalDerivarAbierto = true;
+            },
+
+            async confirmarDerivacion() {
+                if (!this.turnoActual || !this.areaDestinoId) return;
+
+                this.cargando = true;
+                try {
+                    const res = await fetch(`{{ url('/operador/transferir') }}/${this.turnoActual.id}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            nueva_area_id: this.areaDestinoId,
+                            motivo: this.motivoDerivacion
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        this.mensaje = data.message;
+                        this.modalDerivarAbierto = false;
+                        this.motivoDerivacion = '';
+                        this.detenerCronometro();
+                        this.cargarCola();
+                    } else {
+                        alert(data.message || 'No se pudo derivar el turno.');
+                    }
+                } catch(e) {
+                    console.error('Error derivando turno:', e);
                 } finally {
                     this.cargando = false;
                 }

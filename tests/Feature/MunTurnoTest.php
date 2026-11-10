@@ -195,10 +195,56 @@ class MunTurnoTest extends TestCase
     {
         $responseTv = $this->get(route('tv.estado'));
         $responseTv->assertStatus(200);
-        $responseTv->assertJsonStructure(['ultimo_llamado', 'historial', 'en_espera', 'total_espera']);
+        $responseTv->assertJsonStructure(['ultimo_llamado', 'turnos_en_atencion', 'historial', 'en_espera', 'total_espera']);
 
         $responseMetricas = $this->get(route('admin.metricas'));
         $responseMetricas->assertStatus(200);
         $responseMetricas->assertJsonStructure(['total_emitidos', 'total_atendidos', 'total_espera', 'promedio_espera_min']);
+    }
+
+    public function test_operador_puede_derivar_turno_a_otra_area(): void
+    {
+        $nuevaArea = Area::create([
+            'nombre' => 'Área Destino Test',
+            'codigo' => 'DEST',
+            'color' => '#10b981',
+            'activo' => true,
+        ]);
+
+        $turno = Turno::create([
+            'codigo' => 'TEST-101',
+            'numero_secuencia' => 101,
+            'area_id' => $this->area->id,
+            'tramite_id' => $this->tramite->id,
+            'ventanilla_id' => $this->ventanilla->id,
+            'ciudadano_tipo_documento' => 'DNI',
+            'ciudadano_documento' => '11223344',
+            'ciudadano_nombre' => 'Derivado Test',
+            'es_preferencial' => false,
+            'estado' => 'atendiendo',
+            'fecha_emision' => now(),
+            'fecha_inicio_atencion' => now(),
+        ]);
+
+        $response = $this->post(route('operador.transferir', $turno->id), [
+            'nueva_area_id' => $nuevaArea->id,
+            'motivo' => 'Derivado para pago',
+        ]);
+
+        $response->assertStatus(200);
+        $turno->refresh();
+
+        $this->assertEquals($nuevaArea->id, $turno->area_id);
+        $this->assertEquals('espera', $turno->estado);
+        $this->assertTrue((bool)$turno->es_preferencial);
+        $this->assertNull($turno->ventanilla_id);
+        $this->assertStringContainsString('Derivado para pago', $turno->observaciones);
+    }
+
+    public function test_admin_puede_descargar_reporte_csv(): void
+    {
+        $response = $this->get(route('admin.exportar'));
+        $response->assertStatus(200);
+        $this->assertStringContainsString('text/csv', $response->headers->get('content-type'));
     }
 }

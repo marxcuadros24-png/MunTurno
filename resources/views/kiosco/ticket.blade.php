@@ -1,8 +1,4 @@
-@extends('layouts.app')
-
-@section('title', 'Ticket de Turno ' . $turno->codigo)
-
-@section('content')
+<x-layouts.app :title="'Ticket de Turno ' . $turno->codigo">
 <div class="max-w-xl mx-auto px-4 py-8">
     <!-- Ticket Card Estilizado para Impresión y Pantalla -->
     <div id="ticketImprimible" class="bg-white rounded-3xl border-2 border-slate-200 shadow-xl overflow-hidden print:border-none print:shadow-none print:m-0">
@@ -105,5 +101,5 @@
         </a>
     </div>
 </div>
-@endsection
+</x-layouts.app>
 

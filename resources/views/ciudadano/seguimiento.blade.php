@@ -1,22 +1,18 @@
-@extends('layouts.app')
+<x-layouts.app :title="'Mi Turno ' . $turno->codigo . ' en Vivo'">
+    <x-slot:styles>
+        <style>
+            @keyframes alert-vibrate {
+                0%, 100% { transform: translateY(0); }
+                25% { transform: translateY(-4px); }
+                75% { transform: translateY(4px); }
+            }
+            .called-animation {
+                animation: alert-vibrate 0.6s infinite ease-in-out;
+            }
+        </style>
+    </x-slot:styles>
 
-@section('title', 'Mi Turno ' . $turno->codigo . ' en Vivo')
-
-@push('styles')
-<style>
-    @keyframes alert-vibrate {
-        0%, 100% { transform: translateY(0); }
-        25% { transform: translateY(-4px); }
-        75% { transform: translateY(4px); }
-    }
-    .called-animation {
-        animation: alert-vibrate 0.6s infinite ease-in-out;
-    }
-</style>
-@endpush
-
-@section('content')
-<div class="max-w-md mx-auto px-4 py-8" x-data="ciudadanoApp()" x-init="initApp()">
+    <div class="max-w-md mx-auto px-4 py-8" x-data="ciudadanoApp()" x-init="initApp()">
     <!-- Tarjeta Principal de Seguimiento Móvil -->
     <div class="rounded-3xl border-2 transition-all duration-300 shadow-xl overflow-hidden"
          :class="{
@@ -120,7 +116,7 @@
         </div>
     </div>
 </div>
-@endsection
+</x-layouts.app>
 
 @push('scripts')
 <script>

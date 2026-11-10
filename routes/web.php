@@ -34,6 +34,7 @@ Route::prefix('operador')->name('operador.')->group(function () {
     Route::post('/iniciar/{turno}', [OperadorController::class, 'iniciarAtencion'])->name('iniciar');
     Route::post('/finalizar/{turno}', [OperadorController::class, 'finalizarAtencion'])->name('finalizar');
     Route::post('/ausente/{turno}', [OperadorController::class, 'marcarAusente'])->name('ausente');
+    Route::post('/transferir/{turno}', [OperadorController::class, 'transferir'])->name('transferir');
 });
 
 // Módulo 4: Seguimiento Móvil del Ciudadano
@@ -44,4 +45,5 @@ Route::get('/api/mi-turno/{codigo}/estado', [CiudadanoController::class, 'estado
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::get('/', [AdminController::class, 'index'])->name('index');
     Route::get('/metricas', [AdminController::class, 'metricas'])->name('metricas');
+    Route::get('/exportar', [AdminController::class, 'exportarCsv'])->name('exportar');
 });

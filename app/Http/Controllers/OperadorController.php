@@ -138,5 +138,26 @@ class OperadorController extends Controller
             'turno' => $turno,
         ]);
     }
+
+    public function transferir(Request $request, Turno $turno): JsonResponse
+    {
+        $validated = $request->validate([
+            'nueva_area_id' => 'required|exists:areas,id',
+            'motivo' => 'nullable|string|max:255',
+        ]);
+
+        $this->turnoService->transferirTurno(
+            $turno,
+            (int) $validated['nueva_area_id'],
+            null,
+            $validated['motivo'] ?? null
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => "Turno {$turno->codigo} derivado a nueva área con prioridad.",
+            'turno' => $turno,
+        ]);
+    }
 }
 

@@ -1,8 +1,4 @@
-@extends('layouts.app')
-
-@section('title', 'Portal Municipal de Turnos y Colas en Tiempo Real')
-
-@section('content')
+<x-layouts.app :title="'Portal Municipal de Turnos y Colas en Tiempo Real'">
 <div class="py-12 bg-gradient-to-b from-slate-50 via-white to-slate-100">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <!-- Hero Header -->
@@ -134,5 +130,5 @@
         </div>
     </div>
 </div>
-@endsection
+</x-layouts.app>
 

@@ -1,8 +1,4 @@
-@extends('layouts.app')
-
-@section('title', 'Kiosco de Emisión de Turnos')
-
-@section('content')
+<x-layouts.app :title="'Kiosco de Emisión de Turnos'">
 <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="kioscoApp()">
     <!-- Cabecera del Kiosco -->
     <div class="text-center mb-8">
@@ -180,7 +176,7 @@
         </div>
     </form>
 </div>
-@endsection
+</x-layouts.app>
 
 @push('scripts')
 <script>

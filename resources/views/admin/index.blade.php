@@ -1,8 +1,4 @@
-@extends('layouts.app')
-
-@section('title', 'Dashboard de Supervisión y Métricas')
-
-@section('content')
+<x-layouts.app :title="'Dashboard de Supervisión y Métricas'">
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="adminDashboard()" x-init="initApp()">
     <!-- Header del Dashboard -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-6 mb-6 border-b border-slate-200 gap-4">
@@ -18,6 +14,10 @@
         </div>
         <div class="flex items-center gap-3">
             <span class="text-xs text-slate-400 font-mono">Última actualización: <span x-text="ultimaActualizacion">--:--:--</span></span>
+            <a href="{{ route('admin.exportar') }}" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition" title="Descargar reporte en Excel">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                <span>Exportar CSV</span>
+            </a>
             <button @click="cargarMetricas()" class="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs flex items-center gap-1.5 transition">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                 <span>Actualizar</span>
@@ -183,7 +183,7 @@
         </div>
     </div>
 </div>
-@endsection
+</x-layouts.app>
 
 @push('scripts')
 <script>

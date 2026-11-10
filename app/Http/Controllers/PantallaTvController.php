@@ -21,12 +21,28 @@ class PantallaTvController extends Controller
     {
         $hoy = Carbon::today();
 
-        // Último turno llamado o en atención
+        // Último turno llamado prioritariamente
         $ultimoLlamado = Turno::with(['area', 'tramite', 'ventanilla'])
             ->whereDate('fecha_emision', $hoy)
-            ->whereIn('estado', ['llamado', 'atendiendo'])
+            ->where('estado', 'llamado')
             ->orderByDesc('updated_at')
             ->first();
+
+        // Si no hay ninguno en 'llamado', tomamos el más reciente en atención como referencia secundaria
+        if (!$ultimoLlamado) {
+            $ultimoLlamado = Turno::with(['area', 'tramite', 'ventanilla'])
+                ->whereDate('fecha_emision', $hoy)
+                ->where('estado', 'atendiendo')
+                ->orderByDesc('updated_at')
+                ->first();
+        }
+
+        // Todos los turnos actualmente en atención en ventanillas
+        $turnosEnAtencion = Turno::with(['area', 'tramite', 'ventanilla', 'operador'])
+            ->whereDate('fecha_emision', $hoy)
+            ->where('estado', 'atendiendo')
+            ->orderByDesc('fecha_inicio_atencion')
+            ->get();
 
         // Historial de los últimos 6 turnos llamados
         $historialLlamados = Turno::with(['area', 'ventanilla'])
@@ -53,6 +69,7 @@ class PantallaTvController extends Controller
 
         return response()->json([
             'ultimo_llamado' => $ultimoLlamado,
+            'turnos_en_atencion' => $turnosEnAtencion,
             'historial' => $historialLlamados,
             'en_espera' => $proximosEnEspera,
             'total_espera' => Turno::whereDate('fecha_emision', $hoy)->where('estado', 'espera')->count(),
