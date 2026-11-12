@@ -385,7 +385,9 @@
             async cargarCola(silencioso = false) {
                 if (!this.ventanillaId) return;
                 try {
-                    const res = await fetch(`{{ url('/operador/cola') }}/${this.ventanillaId}?todas_las_areas=${this.todasLasAreas ? 1 : 0}`);
+                    const res = await fetch(`{{ url('/operador/cola') }}/${this.ventanillaId}?todas_las_areas=${this.todasLasAreas ? 1 : 0}&_=${Date.now()}`, {
+                        cache: 'no-store'
+                    });
                     if (res.ok) {
                         const data = await res.json();
                         this.ventanilla = data.ventanilla;
@@ -413,7 +415,13 @@
 
             iniciarWebSockets() {
                 if (window.Echo) {
-                    this.conectado = true;
+                    const pusherConn = window.Echo.connector?.pusher?.connection;
+                    if (pusherConn) {
+                        this.conectado = pusherConn.state === 'connected';
+                        pusherConn.bind('state_change', (states) => {
+                            this.conectado = states.current === 'connected';
+                        });
+                    }
                     window.Echo.channel('cola.publica')
                         .listen('.turno.creado', (e) => {
                             console.log('Turno creado detectado:', e);

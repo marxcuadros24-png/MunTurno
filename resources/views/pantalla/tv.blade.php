@@ -30,11 +30,11 @@
                 </div>
             </div>
 
-            <!-- Reloj Digital y Estado de Conexión WebSockets -->
+            <!-- Reloj Digital y Estado de Conexión -->
             <div class="flex items-center gap-6">
                 <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700/60 text-xs">
-                    <span class="w-2.5 h-2.5 rounded-full" :class="conectado ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"></span>
-                    <span class="text-slate-300 font-mono" x-text="conectado ? 'WebSockets En Vivo' : 'Conectando...'"></span>
+                    <span class="w-2.5 h-2.5 rounded-full" :class="conectado ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400 animate-pulse'"></span>
+                    <span class="text-slate-300 font-mono" x-text="conectado ? 'WebSockets En Vivo' : 'Sondeo En Vivo (2s)'"></span>
                 </div>
 
                 <!-- Botón de Audio y Fullscreen -->
@@ -58,7 +58,7 @@
         <!-- Contenido Principal Dividido: Turno Destacado a la Izquierda + Historial a la Derecha -->
         <div class="flex-1 grid grid-cols-12 gap-6 p-6 min-h-0">
             <!-- COLUMNA IZQUIERDA (7 Columnas): Turno Protagonista en Llamada O Turnos en Atención Activa -->
-            <div class="col-span-7 flex flex-col justify-between">
+            <div class="col-span-7 flex flex-col justify-between min-h-0">
                 <!-- CASO A: HAY UN TURNO EN LLAMADO RECIENTE -->
                 <template x-if="turnoActual && turnoActual.estado === 'llamado'">
                     <div class="h-full flex flex-col justify-between bg-gradient-to-b from-slate-900 to-slate-900/90 rounded-3xl border-2 border-blue-500/40 p-8 shadow-2xl relative overflow-hidden"
@@ -174,9 +174,9 @@
             </div>
 
             <!-- COLUMNA DERECHA (5 Columnas): Últimos Turnos Llamados + En Espera -->
-            <div class="col-span-5 flex flex-col gap-6">
+            <div class="col-span-5 flex flex-col gap-6 min-h-0">
                 <!-- Últimos Llamados -->
-                <div class="flex-1 bg-slate-900/90 rounded-3xl border border-slate-800 p-6 flex flex-col shadow-lg overflow-hidden">
+                <div class="flex-1 min-h-0 bg-slate-900/90 rounded-3xl border border-slate-800 p-6 flex flex-col shadow-lg overflow-hidden">
                     <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
                         <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
                             <svg class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -255,13 +255,17 @@
                     animarLlamado: false,
                     relojHora: '',
                     relojFecha: '',
+                    primeraCarga: true,
+                    ultimoAnuncioFirma: null,
+                    echoInicializado: false,
 
                     initApp() {
                         this.actualizarReloj();
                         setInterval(() => this.actualizarReloj(), 1000);
 
                         this.cargarEstado();
-                        setInterval(() => this.cargarEstado(), 10000);
+                        // Sondeo continuo cada 2 segundos sin caché como respaldo en tiempo real
+                        setInterval(() => this.cargarEstado(), 2000);
 
                         this.iniciarWebSockets();
                     },
@@ -274,24 +278,56 @@
 
                     async cargarEstado() {
                         try {
-                            const res = await fetch('{{ route('tv.estado') }}');
+                            const res = await fetch(`{{ route('tv.estado') }}?_=${Date.now()}`, {
+                                cache: 'no-store',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'X-Requested-With': 'XMLHttpRequest'
+                                }
+                            });
                             if (res.ok) {
                                 const data = await res.json();
-                                this.turnoActual = data.ultimo_llamado;
+                                const nuevoLlamado = data.ultimo_llamado;
+
+                                this.turnoActual = nuevoLlamado;
                                 this.turnosEnAtencion = data.turnos_en_atencion || [];
                                 this.historial = data.historial || [];
                                 this.enEspera = data.en_espera || [];
                                 this.totalEspera = data.total_espera || 0;
+
+                                // Detectar nuevos llamados o re-llamados también durante el sondeo HTTP
+                                if (nuevoLlamado && nuevoLlamado.estado === 'llamado') {
+                                    const firma = `${nuevoLlamado.id}:${nuevoLlamado.llamadas_contador || 1}`;
+                                    if (!this.primeraCarga && this.ultimoAnuncioFirma !== firma) {
+                                        this.ultimoAnuncioFirma = firma;
+                                        this.dispararAlertaVisualYSonora(nuevoLlamado);
+                                    } else if (this.primeraCarga) {
+                                        this.ultimoAnuncioFirma = firma;
+                                    }
+                                }
+
+                                this.primeraCarga = false;
                             }
                         } catch(e) {
-                            console.error('Error cargando estado:', e);
+                            console.error('Error cargando estado de TV:', e);
                         }
                     },
 
                     iniciarWebSockets() {
+                        if (this.echoInicializado) return;
+
                         if (window.Echo) {
-                            this.conectado = true;
-                            console.log('Conectando a canal cola.publica...');
+                            this.echoInicializado = true;
+                            console.log('Suscribiendo TV al canal cola.publica...');
+
+                            // Monitorear estado real de conexión WebSocket (Pusher/Reverb)
+                            const pusherConn = window.Echo.connector?.pusher?.connection;
+                            if (pusherConn) {
+                                this.conectado = pusherConn.state === 'connected';
+                                pusherConn.bind('state_change', (states) => {
+                                    this.conectado = states.current === 'connected';
+                                });
+                            }
 
                             window.Echo.channel('cola.publica')
                                 .listen('.turno.llamado', (e) => {
@@ -311,22 +347,34 @@
                         }
                     },
 
-                    procesarLlamado(data) {
-                        this.turnoActual = data;
+                    dispararAlertaVisualYSonora(data) {
                         this.animarLlamado = true;
-
                         const ventanillaNombre = data.ventanilla ? data.ventanilla.numero : 'Ventanilla';
-                        window.MunAudio.llamar(data.codigo, ventanillaNombre);
-
+                        if (window.MunAudio) {
+                            window.MunAudio.llamar(data.codigo, ventanillaNombre);
+                        }
                         setTimeout(() => {
                             this.animarLlamado = false;
                         }, 6000);
+                    },
+
+                    procesarLlamado(data) {
+                        this.turnoActual = data;
+                        this.primeraCarga = false;
+
+                        const firma = `${data.id}:${data.llamadas_contador || 1}`;
+                        if (this.ultimoAnuncioFirma !== firma) {
+                            this.ultimoAnuncioFirma = firma;
+                            this.dispararAlertaVisualYSonora(data);
+                        }
 
                         this.cargarEstado();
                     },
 
                     testAudio() {
-                        window.MunAudio.llamar('A-001', 'Ventanilla 01');
+                        if (window.MunAudio) {
+                            window.MunAudio.llamar('A-001', 'Ventanilla 01');
+                        }
                     },
 
                     toggleFullscreen() {
@@ -340,6 +388,5 @@
                 };
             }
         </script>
-        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     </x-slot:scripts>
 </x-layouts.app>

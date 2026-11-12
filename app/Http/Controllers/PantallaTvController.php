@@ -26,6 +26,7 @@ class PantallaTvController extends Controller
             ->whereDate('fecha_emision', $hoy)
             ->where('estado', 'llamado')
             ->orderByDesc('updated_at')
+            ->orderByDesc('id')
             ->first();
 
         // Si no hay ninguno en 'llamado', tomamos el más reciente en atención como referencia secundaria
@@ -34,6 +35,7 @@ class PantallaTvController extends Controller
                 ->whereDate('fecha_emision', $hoy)
                 ->where('estado', 'atendiendo')
                 ->orderByDesc('updated_at')
+                ->orderByDesc('id')
                 ->first();
         }
 
@@ -42,6 +44,7 @@ class PantallaTvController extends Controller
             ->whereDate('fecha_emision', $hoy)
             ->where('estado', 'atendiendo')
             ->orderByDesc('fecha_inicio_atencion')
+            ->orderByDesc('id')
             ->get();
 
         // Historial de los últimos 6 turnos llamados
@@ -50,6 +53,7 @@ class PantallaTvController extends Controller
             ->whereIn('estado', ['llamado', 'atendiendo', 'finalizado'])
             ->whereNotNull('fecha_primer_llamado')
             ->orderByDesc('updated_at')
+            ->orderByDesc('id')
             ->limit(6)
             ->get();
 
@@ -75,6 +79,9 @@ class PantallaTvController extends Controller
             'total_espera' => Turno::whereDate('fecha_emision', $hoy)->where('estado', 'espera')->count(),
             'ventanillas' => $ventanillas,
             'hora' => now()->format('H:i:s'),
+        ], 200, [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
         ]);
     }
 }

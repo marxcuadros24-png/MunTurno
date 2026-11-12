@@ -183,9 +183,8 @@
         </div>
     </div>
 </div>
-</x-layouts.app>
 
-@push('scripts')
+<x-slot:scripts>
 <script>
     function adminDashboard() {
         return {
@@ -201,8 +200,8 @@
 
             initApp() {
                 this.iniciarWebSockets();
-                // Polling cada 30 segundos
-                setInterval(() => this.cargarMetricas(), 30000);
+                // Sondeo continuo cada 5 segundos
+                setInterval(() => this.cargarMetricas(), 5000);
             },
 
             iniciarWebSockets() {
@@ -218,7 +217,9 @@
 
             async cargarMetricas() {
                 try {
-                    const res = await fetch('{{ route('admin.metricas') }}');
+                    const res = await fetch(`{{ route('admin.metricas') }}?_=${Date.now()}`, {
+                        cache: 'no-store'
+                    });
                     if (res.ok) {
                         const data = await res.json();
                         this.metricas = data;
@@ -231,6 +232,6 @@
         };
     }
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-@endpush
+</x-slot:scripts>
+</x-layouts.app>
 

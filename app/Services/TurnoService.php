@@ -12,16 +12,30 @@ use App\Models\Turno;
 use App\Models\Ventanilla;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use InvalidArgumentException;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class TurnoService
 {
+    /**
+     * Emite un evento de broadcasting sin interrumpir el flujo ni revertir transacciones
+     * si el servidor WebSocket (Reverb) no se encuentra activo temporalmente.
+     */
+    protected function safeBroadcast(object $event): void
+    {
+        try {
+            broadcast($event);
+        } catch (Throwable $e) {
+            Log::warning('WebSocket broadcast omitido: ' . $e->getMessage());
+        }
+    }
+
     /**
      * Genera un nuevo turno para el ciudadano con código atómico correlativo por día y área.
      */
     public function emitirTurno(array $datos): Turno
     {
-        return DB::transaction(function () use ($datos) {
+        $turno = DB::transaction(function () use ($datos) {
             $tramite = Tramite::with('area')->findOrFail($datos['tramite_id']);
             $area = $tramite->area;
             $esPreferencial = !empty($datos['es_preferencial']) || $tramite->es_preferencial;
@@ -56,13 +70,13 @@ class TurnoService
                 'fecha_emision' => now(),
             ]);
 
-            $turno->load(['area', 'tramite']);
-
-            // Disparamos evento en tiempo real vía WebSockets
-            broadcast(new TurnoCreado($turno));
-
-            return $turno;
+            return $turno->load(['area', 'tramite']);
         });
+
+        // Disparamos evento en tiempo real vía WebSockets una vez confirmada la transacción
+        $this->safeBroadcast(new TurnoCreado($turno));
+
+        return $turno;
     }
 
     /**
@@ -71,7 +85,7 @@ class TurnoService
      */
     public function llamarSiguiente(Ventanilla $ventanilla, ?int $operadorId = null, bool $todasLasAreas = false): ?Turno
     {
-        return DB::transaction(function () use ($ventanilla, $operadorId, $todasLasAreas) {
+        $turno = DB::transaction(function () use ($ventanilla, $operadorId, $todasLasAreas) {
             $hoy = Carbon::today();
 
             // Buscar en la cola de turnos en espera para el área de la ventanilla (o cualquier área si es universal)
@@ -114,13 +128,15 @@ class TurnoService
                 'llamado_at' => $ahora,
             ]);
 
-            $turno->load(['area', 'tramite', 'ventanilla', 'operador']);
-
-            // Disparar WebSocket a pantalla de TV y cliente
-            broadcast(new TurnoLlamado($turno));
-
-            return $turno;
+            return $turno->load(['area', 'tramite', 'ventanilla', 'operador']);
         });
+
+        if ($turno) {
+            // Disparar WebSocket a pantalla de TV y cliente ya con el commit persistido en MySQL
+            $this->safeBroadcast(new TurnoLlamado($turno));
+        }
+
+        return $turno;
     }
 
     /**
@@ -128,7 +144,7 @@ class TurnoService
      */
     public function llamarTurnoEspecifico(Turno $turno, Ventanilla $ventanilla, ?int $operadorId = null): Turno
     {
-        return DB::transaction(function () use ($turno, $ventanilla, $operadorId) {
+        $turno = DB::transaction(function () use ($turno, $ventanilla, $operadorId) {
             $ahora = now();
             $tiempoEspera = $turno->fecha_emision ? max(0, (int) abs($ahora->diffInSeconds($turno->fecha_emision))) : 0;
 
@@ -150,11 +166,12 @@ class TurnoService
                 'llamado_at' => $ahora,
             ]);
 
-            $turno->load(['area', 'tramite', 'ventanilla', 'operador']);
-            broadcast(new TurnoLlamado($turno));
-
-            return $turno;
+            return $turno->load(['area', 'tramite', 'ventanilla', 'operador']);
         });
+
+        $this->safeBroadcast(new TurnoLlamado($turno));
+
+        return $turno;
     }
 
     /**
@@ -163,6 +180,7 @@ class TurnoService
     public function rellamarTurno(Turno $turno, ?int $operadorId = null): Turno
     {
         $turno->increment('llamadas_contador');
+        $turno->refresh();
 
         if ($turno->ventanilla_id) {
             LlamadoHistorial::create([
@@ -175,7 +193,7 @@ class TurnoService
 
         $turno->load(['area', 'tramite', 'ventanilla', 'operador']);
 
-        broadcast(new TurnoLlamado($turno));
+        $this->safeBroadcast(new TurnoLlamado($turno));
 
         return $turno;
     }
@@ -194,7 +212,7 @@ class TurnoService
             $turno->ventanilla->update(['estado' => 'atendiendo']);
         }
 
-        broadcast(new TurnoActualizado($turno));
+        $this->safeBroadcast(new TurnoActualizado($turno));
 
         return $turno;
     }
@@ -219,7 +237,7 @@ class TurnoService
             $turno->ventanilla->update(['estado' => 'disponible']);
         }
 
-        broadcast(new TurnoActualizado($turno));
+        $this->safeBroadcast(new TurnoActualizado($turno));
 
         return $turno;
     }
@@ -238,7 +256,7 @@ class TurnoService
             $turno->ventanilla->update(['estado' => 'disponible']);
         }
 
-        broadcast(new TurnoActualizado($turno));
+        $this->safeBroadcast(new TurnoActualizado($turno));
 
         return $turno;
     }
@@ -274,8 +292,8 @@ class TurnoService
 
         $turno->load(['area', 'tramite']);
 
-        broadcast(new TurnoActualizado($turno));
-        broadcast(new TurnoCreado($turno));
+        $this->safeBroadcast(new TurnoActualizado($turno));
+        $this->safeBroadcast(new TurnoCreado($turno));
 
         return $turno;
     }

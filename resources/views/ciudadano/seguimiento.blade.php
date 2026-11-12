@@ -116,23 +116,22 @@
         </div>
     </div>
 </div>
-</x-layouts.app>
 
-@push('scripts')
+<x-slot:scripts>
 <script>
     function ciudadanoApp() {
         return {
             turno: {
                 id: {{ $turno->id }},
-                codigo: '{{ $turno->codigo }}',
-                estado: '{{ $turno->estado }}',
-                ciudadano_nombre: '{{ $turno->ciudadano_nombre }}',
+                codigo: @js($turno->codigo),
+                estado: @js($turno->estado),
+                ciudadano_nombre: @js($turno->ciudadano_nombre),
                 area: {
-                    nombre: '{{ $turno->area->nombre }}',
-                    color: '{{ $turno->area->color }}'
+                    nombre: @js($turno->area->nombre),
+                    color: @js($turno->area->color)
                 },
                 tramite: {
-                    nombre: '{{ $turno->tramite->nombre }}'
+                    nombre: @js($turno->tramite->nombre)
                 },
                 ventanilla: @json($turno->ventanilla)
             },
@@ -151,8 +150,8 @@
 
             initApp() {
                 this.iniciarWebSockets();
-                // Polling suave de respaldo cada 10s
-                setInterval(() => this.verificarEstado(), 10000);
+                // Sondeo continuo cada 3s sin caché como respaldo
+                setInterval(() => this.verificarEstado(), 3000);
             },
 
             iniciarWebSockets() {
@@ -181,7 +180,9 @@
 
             async verificarEstado() {
                 try {
-                    const res = await fetch(`{{ route('ciudadano.estado', $turno->codigo) }}`);
+                    const res = await fetch(`{{ route('ciudadano.estado', $turno->codigo) }}?_=${Date.now()}`, {
+                        cache: 'no-store'
+                    });
                     if (res.ok) {
                         const data = await res.json();
                         const estadoAnterior = this.turno.estado;
@@ -209,11 +210,13 @@
                 }
                 // Timbre y voz
                 const vent = this.turno.ventanilla ? this.turno.ventanilla.numero : 'Ventanilla';
-                window.MunAudio.llamar(this.turno.codigo, vent);
+                if (window.MunAudio) {
+                    window.MunAudio.llamar(this.turno.codigo, vent);
+                }
             }
         };
     }
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-@endpush
+</x-slot:scripts>
+</x-layouts.app>
 

@@ -336,4 +336,58 @@ class MunTurnoTest extends TestCase
         $this->assertEquals('llamado', $turnoOtraArea->estado);
         $this->assertEquals($this->ventanilla->id, $turnoOtraArea->ventanilla_id);
     }
+
+    public function test_pantalla_tv_refleja_cambios_en_vivo_y_vistas_no_duplican_alpine(): void
+    {
+        // Limpiar turnos previos en espera de esta área para probar el estado limpio
+        Turno::whereDate('fecha_emision', now())->delete();
+
+        $turno = Turno::create([
+            'codigo' => 'TV-001',
+            'numero_secuencia' => 1,
+            'area_id' => $this->area->id,
+            'tramite_id' => $this->tramite->id,
+            'ciudadano_tipo_documento' => 'DNI',
+            'ciudadano_documento' => '70010020',
+            'ciudadano_nombre' => 'Ciudadano TV Vivo',
+            'es_preferencial' => false,
+            'estado' => 'espera',
+            'fecha_emision' => now(),
+        ]);
+
+        // Verificar renderizado de vistas con Alpine cargado exactamente 1 vez
+        $htmlTv = $this->get(route('tv.index'))->assertStatus(200)->getContent();
+        $this->assertEquals(1, substr_count($htmlTv, 'alpinejs'));
+        $this->assertStringContainsString('function tvApp()', $htmlTv);
+
+        $htmlAdmin = $this->get(route('admin.index'))->assertStatus(200)->getContent();
+        $this->assertEquals(1, substr_count($htmlAdmin, 'alpinejs'));
+        $this->assertStringContainsString('function adminDashboard()', $htmlAdmin);
+
+        $htmlSeg = $this->get(route('ciudadano.seguimiento', $turno->codigo))->assertStatus(200)->getContent();
+        $this->assertEquals(1, substr_count($htmlSeg, 'alpinejs'));
+        $this->assertStringContainsString('function ciudadanoApp()', $htmlSeg);
+
+        // 1. Estado inicial: en espera
+        $res1 = $this->get(route('tv.estado'))->assertStatus(200);
+        $this->assertStringContainsString('no-store', $res1->headers->get('Cache-Control'));
+        $this->assertTrue(collect($res1->json('en_espera'))->contains('codigo', 'TV-001'));
+
+        // 2. Operador llama al turno -> debe aparecer como ultimo_llamado en estado 'llamado'
+        $this->post(route('operador.llamar', $this->ventanilla->id))->assertStatus(200);
+        $res2 = $this->get(route('tv.estado'))->assertStatus(200);
+        $this->assertEquals('TV-001', $res2->json('ultimo_llamado.codigo'));
+        $this->assertEquals('llamado', $res2->json('ultimo_llamado.estado'));
+
+        // 3. Operador inicia atención -> debe aparecer en turnos_en_atencion
+        $this->post(route('operador.iniciar', $turno->id))->assertStatus(200);
+        $res3 = $this->get(route('tv.estado'))->assertStatus(200);
+        $this->assertTrue(collect($res3->json('turnos_en_atencion'))->contains('codigo', 'TV-001'));
+
+        // 4. Operador finaliza atención -> debe salir de turnos_en_atencion y quedar en historial
+        $this->post(route('operador.finalizar', $turno->id))->assertStatus(200);
+        $res4 = $this->get(route('tv.estado'))->assertStatus(200);
+        $this->assertFalse(collect($res4->json('turnos_en_atencion'))->contains('codigo', 'TV-001'));
+        $this->assertTrue(collect($res4->json('historial'))->contains('codigo', 'TV-001'));
+    }
 }
